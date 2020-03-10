@@ -559,7 +559,20 @@ update f k m = alter (maybe Nothing f) k m
 -- | Convert any foldable collection of key/value pairs to a map.
 -- | On key collision, later values take precedence over earlier ones.
 fromFoldable :: forall f k v. Ord k => Foldable f => f (Tuple k v) -> Map k v
-fromFoldable = fromSortedUniqueArray <<< Array.sortWith fst <<< Array.nubBy (comparing fst) <<< Array.reverse <<< Array.fromFoldable
+fromFoldable = fromArray <<< Array.fromFoldable
+
+-- | Convert any foldable collection of key/value pairs to a map.
+-- | On key collision, later values take precedence over earlier ones.
+fromArray :: forall k v. Ord k => Array (Tuple k v) -> Map k v
+fromArray = fromSortedUniqueArray <<< arrayUniqSortBy cmp
+  where
+    cmp (Tuple k1 _) (Tuple k2 _) =
+      case compare k1 k2 of
+        LT -> -1
+        EQ -> 0
+        GT -> 1
+
+foreign import arrayUniqSortBy :: forall a. (a -> a -> Int) -> Array a -> Array a
 
 -- | Convert any foldable collection of key/value pairs to a map.
 -- | On key collision, the values are configurably combined.
