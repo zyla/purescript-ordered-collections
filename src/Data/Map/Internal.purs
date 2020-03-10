@@ -44,12 +44,13 @@ module Data.Map.Internal
   , filter
   , mapMaybeWithKey
   , mapMaybe
+  , isBalanced
   ) where
 
 import Prelude
 
 import Data.Eq (class Eq1)
-import Data.Foldable (foldl, foldMap, foldr, class Foldable)
+import Data.Foldable (foldl, foldMap, foldr, class Foldable, all)
 import Data.FoldableWithIndex (class FoldableWithIndex, foldlWithIndex, foldrWithIndex)
 import Data.FunctorWithIndex (class FunctorWithIndex, mapWithIndex)
 import Data.List (List(..), (:), length, nub)
@@ -58,9 +59,10 @@ import Data.Maybe (Maybe(..), maybe, isJust, fromMaybe)
 import Data.Ord (class Ord1)
 import Data.Traversable (traverse, class Traversable)
 import Data.TraversableWithIndex (class TraversableWithIndex, traverseWithIndex)
-import Data.Tuple (Tuple(Tuple), snd, uncurry)
+import Data.Tuple (Tuple(Tuple), snd, uncurry, fst)
 import Data.Unfoldable (class Unfoldable, unfoldr)
 import Partial.Unsafe (unsafePartial)
+import Data.Array as Array
 
 -- | `Map k v` represents maps from keys of type `k` to values of type `v`.
 data Map k v
@@ -110,7 +112,7 @@ instance foldableMap :: Foldable (Map k) where
 
 instance foldableWithIndexMap :: FoldableWithIndex k (Map k) where
   foldlWithIndex f z m = foldl (uncurry <<< (flip f)) z $ asList $ toUnfoldable m
-  foldrWithIndex f z m = foldr (uncurry f) z $ asList $ toUnfoldable m
+  foldrWithIndex = foldrWithKey
   foldMapWithIndex f m = foldMap (uncurry f) $ asList $ toUnfoldable m
 
 asList :: forall k v. List (Tuple k v) -> List (Tuple k v)
@@ -557,7 +559,7 @@ update f k m = alter (maybe Nothing f) k m
 -- | Convert any foldable collection of key/value pairs to a map.
 -- | On key collision, later values take precedence over earlier ones.
 fromFoldable :: forall f k v. Ord k => Foldable f => f (Tuple k v) -> Map k v
-fromFoldable = foldl (\m (Tuple k v) -> insert k v m) empty
+fromFoldable = fromSortedUniqueArray <<< Array.sortWith fst <<< Array.nubBy (comparing fst) <<< Array.reverse <<< Array.fromFoldable
 
 -- | Convert any foldable collection of key/value pairs to a map.
 -- | On key collision, the values are configurably combined.
@@ -565,6 +567,46 @@ fromFoldableWith :: forall f k v. Ord k => Foldable f => (v -> v -> v) -> f (Tup
 fromFoldableWith f = foldl (\m (Tuple k v) -> alter (combine v) k m) empty where
   combine v (Just v') = Just $ f v v'
   combine v Nothing = Just v
+
+fromSortedUniqueArray :: forall k v. Array (Tuple k v) -> Map k v
+fromSortedUniqueArray a = unsafePartial $
+  case a of
+    [] -> Leaf
+    [Tuple k v] -> Two Leaf k v Leaf
+    [Tuple k1 v1, Tuple k2 v2] -> Three Leaf k1 v1 Leaf k2 v2 Leaf
+    _ ->
+      let len = Array.length a in
+      if len <= 4 then
+        let i = len `div` 2
+            Tuple k v = Array.unsafeIndex a i
+        in
+        Two
+          (fromSortedUniqueArray (Array.take i a))
+          k v
+          (fromSortedUniqueArray (Array.drop (i + 1) a))
+      else
+        let i1 = (len - 1) `div` 3
+            i2 = i1 * 2 + 1
+            Tuple k1 v1 = Array.unsafeIndex a i1
+            Tuple k2 v2 = Array.unsafeIndex a i2
+        in
+        Three
+          (fromSortedUniqueArray (Array.take i1 a))
+          k1 v1
+          (fromSortedUniqueArray (Array.slice (i1 + 1) i2 a))
+          k2 v2
+          (fromSortedUniqueArray (Array.drop (i2 + 1) a))
+
+isBalanced :: forall k v. Map k v -> Boolean
+isBalanced m =
+  case depths 0 m of
+    Nil -> true
+    x : xs -> all (eq x) xs
+
+  where
+  depths d Leaf = pure d
+  depths d (Two left _ _ right) = depths (d+1) left <> depths (d+1) right
+  depths d (Three left _ _ mid _ _ right) = depths (d+1) left <> depths (d+1) mid <> depths (d+1) right
 
 -- | Convert any indexed foldable collection into a map.
 fromFoldableWithIndex :: forall f k v. Ord k => FoldableWithIndex k f => f v -> Map k v
@@ -613,6 +655,14 @@ values :: forall k v. Map k v -> List v
 values Leaf = Nil
 values (Two left _ v right) = values left <> pure v <> values right
 values (Three left _ v1 mid _ v2 right) = values left <> pure v1 <> values mid <> pure v2 <> values right
+
+-- | Get a list of the values contained in a map
+foldrWithKey :: forall k v b. (k -> v -> b -> b) -> b -> Map k v -> b
+foldrWithKey f z' m = go m z' where
+  go Leaf z = z
+  go (Two left k v right) z = go left $ f k v $ go right z
+  go (Three left k1 v1 mid k2 v2 right) z =
+    go left $ f k1 v1 $ go mid $ f k2 v2 $ go right z
 
 -- | Compute the union of two maps, using the specified function
 -- | to combine values for duplicate keys.
@@ -668,7 +718,7 @@ size (Three m1 _ _ m2 _ _ m3) = 2 + size m1 + size m2 + size m3
 -- | fails to hold.
 filterWithKey :: forall k v. Ord k => (k -> v -> Boolean) -> Map k v -> Map k v
 filterWithKey predicate =
-  fromFoldable <<< LL.filter (uncurry predicate) <<< toUnfoldable
+  fromSortedUniqueArray <<< Array.filter (uncurry predicate) <<< toAscArray
 
 -- | Filter out those key/value pairs of a map for which a predicate
 -- | on the key fails to hold.

@@ -21,6 +21,10 @@ benchMap = do
   log "------------"
   benchFromFoldable
 
+  log "filterKeys"
+  log "----------"
+  benchFilterKeys
+
   where
 
   benchSize = do
@@ -53,3 +57,25 @@ benchMap = do
 
     log $ "fromFoldable (" <> show (L.length natPairs) <> ")"
     benchWith 10 \_ -> M.fromFoldable natPairs
+
+  benchFilterKeys = do
+    let nats = L.range 0 999999
+        natPairs = (flip Tuple) unit <$> nats
+        singletonMap = M.singleton 0 unit
+        smallMap = M.fromFoldable $ L.take 100 natPairs
+        midMap = M.fromFoldable $ L.take 10000 natPairs
+        bigMap = M.fromFoldable $ natPairs
+
+        filter = M.filterKeys (\k -> k `mod` 2 == 0)
+
+    log "filterKeys: singleton map"
+    bench \_ -> filter singletonMap
+
+    log $ "filterKeys: small map (" <> show (M.size smallMap) <> ")"
+    bench \_ -> filter smallMap
+
+    log $ "filterKeys: midsize map (" <> show (M.size midMap) <> ")"
+    benchWith 100 \_ -> filter midMap
+
+    log $ "filterKeys: big map (" <> show (M.size bigMap) <> ")"
+    benchWith 10 \_ -> filter bigMap

@@ -11,6 +11,7 @@ import Data.FunctorWithIndex (mapWithIndex)
 import Data.List (List(..), groupBy, length, nubBy, singleton, sort, sortBy, (:))
 import Data.List.NonEmpty as NEL
 import Data.Map as M
+import Data.Map.Internal as MI
 import Data.Map.Gen (genMap)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.NonEmpty ((:|))
@@ -166,6 +167,10 @@ mapTests = do
         f x = M.toUnfoldable (M.fromFoldable x)
     in sort (f nubbedList) == sort nubbedList <?> show nubbedList
 
+  log "isBalanced . fromFoldable"
+  quickCheck $ \(list :: List (Tuple SmallKey Unit)) ->
+    MI.isBalanced (M.fromFoldable list) <?> show (nubBy eq list)
+
   log "fromFoldable . toUnfoldable = id"
   quickCheck $ \(TestMap (m :: M.Map SmallKey Int)) ->
     let f m' = M.fromFoldable (M.toUnfoldable m' :: List (Tuple SmallKey Int))
@@ -173,8 +178,10 @@ mapTests = do
 
   log "fromFoldableWith const = fromFoldable"
   quickCheck $ \arr ->
-    M.fromFoldableWith const arr ==
-    M.fromFoldable (arr :: List (Tuple SmallKey Int)) <?> show arr
+    let
+      l = M.fromFoldableWith const arr
+      r = M.fromFoldable (arr :: List (Tuple SmallKey Int))
+    in l == r <?> show {l,r,arr}
 
   log "fromFoldableWith (<>) = fromFoldable . collapse with (<>) . group on fst"
   quickCheck $ \arr ->
