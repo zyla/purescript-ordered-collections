@@ -167,9 +167,9 @@ mapTests = do
         f x = M.toUnfoldable (M.fromFoldable x)
     in sort (f nubbedList) == sort nubbedList <?> show nubbedList
 
-  log "isBalanced . fromFoldable"
+  log "checkValid . fromFoldable"
   quickCheck $ \(list :: List (Tuple SmallKey Unit)) ->
-    MI.isBalanced (M.fromFoldable list) <?> show (nubBy eq list)
+    MI.checkValid (M.fromFoldable list) <?> show (nubBy eq list)
 
   log "fromFoldable . toUnfoldable = id"
   quickCheck $ \(TestMap (m :: M.Map SmallKey Int)) ->

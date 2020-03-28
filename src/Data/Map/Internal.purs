@@ -44,7 +44,6 @@ module Data.Map.Internal
   , filter
   , mapMaybeWithKey
   , mapMaybe
-  , isBalanced
   ) where
 
 import Prelude
@@ -609,17 +608,6 @@ fromSortedUniqueArray a = unsafePartial $
           (fromSortedUniqueArray (Array.slice (i1 + 1) i2 a))
           k2 v2
           (fromSortedUniqueArray (Array.drop (i2 + 1) a))
-
-isBalanced :: forall k v. Map k v -> Boolean
-isBalanced m =
-  case depths 0 m of
-    Nil -> true
-    x : xs -> all (eq x) xs
-
-  where
-  depths d Leaf = pure d
-  depths d (Two left _ _ right) = depths (d+1) left <> depths (d+1) right
-  depths d (Three left _ _ mid _ _ right) = depths (d+1) left <> depths (d+1) mid <> depths (d+1) right
 
 -- | Convert any indexed foldable collection into a map.
 fromFoldableWithIndex :: forall f k v. Ord k => FoldableWithIndex k f => f v -> Map k v
