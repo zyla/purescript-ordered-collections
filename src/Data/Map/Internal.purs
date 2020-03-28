@@ -4,6 +4,7 @@
 module Data.Map.Internal
   ( Map
   , showTree
+  , showIndentedTree
   , empty
   , isEmpty
   , singleton
@@ -44,6 +45,7 @@ module Data.Map.Internal
   , filter
   , mapMaybeWithKey
   , mapMaybe
+  , fromDistinctAscArray
   ) where
 
 import Prelude
@@ -166,6 +168,24 @@ showTree (Three left k1 v1 mid k2 v2 right) =
   ") (" <> show k2 <>
   ") (" <> show v2 <>
   ") (" <> showTree right <> ")"
+
+-- | Render a `Map` as a multiline `String` with indentation
+showIndentedTree :: forall k v. Show k => Show v => Map k v -> String
+showIndentedTree = go ""
+  where
+  go indent Leaf = indent <> "Leaf\n"
+  go indent (Two left k v right) =
+    indent <> "Two\n" <>
+      go (indent <> " ") left <>
+      indent <> " k: (" <> show k <> ") (" <> show v <> ")\n" <>
+      go (indent <> " ") right
+  go indent (Three left k1 v1 mid k2 v2 right) =
+    indent <> "Three\n" <>
+      go (indent <> " ") left <>
+      indent <> " k1: (" <> show k1 <> ") (" <> show v1 <> ")\n" <>
+      go (indent <> " ") mid <>
+      indent <> " k2: (" <> show k2 <> ") (" <> show v2 <> ")\n" <>
+      go (indent <> " ") right
 
 -- | An empty map
 empty :: forall k v. Map k v
@@ -563,7 +583,7 @@ fromFoldable = fromArray <<< Array.fromFoldable
 -- | Convert any foldable collection of key/value pairs to a map.
 -- | On key collision, later values take precedence over earlier ones.
 fromArray :: forall k v. Ord k => Array (Tuple k v) -> Map k v
-fromArray = fromSortedUniqueArray <<< arrayUniqSortBy cmp
+fromArray = fromDistinctAscArray <<< arrayUniqSortBy cmp
   where
     cmp (Tuple k1 _) (Tuple k2 _) =
       case compare k1 k2 of
@@ -580,8 +600,8 @@ fromFoldableWith f = foldl (\m (Tuple k v) -> alter (combine v) k m) empty where
   combine v (Just v') = Just $ f v v'
   combine v Nothing = Just v
 
-fromSortedUniqueArray :: forall k v. Array (Tuple k v) -> Map k v
-fromSortedUniqueArray a = unsafePartial $
+fromDistinctAscArray :: forall k v. Array (Tuple k v) -> Map k v
+fromDistinctAscArray a = unsafePartial $
   case a of
     [] -> Leaf
     [Tuple k v] -> Two Leaf k v Leaf
@@ -593,9 +613,9 @@ fromSortedUniqueArray a = unsafePartial $
             Tuple k v = Array.unsafeIndex a i
         in
         Two
-          (fromSortedUniqueArray (Array.take i a))
+          (fromDistinctAscArray (Array.take i a))
           k v
-          (fromSortedUniqueArray (Array.drop (i + 1) a))
+          (fromDistinctAscArray (Array.drop (i + 1) a))
       else
         let i1 = (len - 1) `div` 3
             i2 = i1 * 2 + 1
@@ -603,11 +623,11 @@ fromSortedUniqueArray a = unsafePartial $
             Tuple k2 v2 = Array.unsafeIndex a i2
         in
         Three
-          (fromSortedUniqueArray (Array.take i1 a))
+          (fromDistinctAscArray (Array.take i1 a))
           k1 v1
-          (fromSortedUniqueArray (Array.slice (i1 + 1) i2 a))
+          (fromDistinctAscArray (Array.slice (i1 + 1) i2 a))
           k2 v2
-          (fromSortedUniqueArray (Array.drop (i2 + 1) a))
+          (fromDistinctAscArray (Array.drop (i2 + 1) a))
 
 -- | Convert any indexed foldable collection into a map.
 fromFoldableWithIndex :: forall f k v. Ord k => FoldableWithIndex k f => f v -> Map k v
@@ -719,7 +739,7 @@ size (Three m1 _ _ m2 _ _ m3) = 2 + size m1 + size m2 + size m3
 -- | fails to hold.
 filterWithKey :: forall k v. Ord k => (k -> v -> Boolean) -> Map k v -> Map k v
 filterWithKey predicate =
-  fromSortedUniqueArray <<< Array.filter (uncurry predicate) <<< toAscArray
+  fromDistinctAscArray <<< Array.filter (uncurry predicate) <<< toAscArray
 
 -- | Filter out those key/value pairs of a map for which a predicate
 -- | on the key fails to hold.

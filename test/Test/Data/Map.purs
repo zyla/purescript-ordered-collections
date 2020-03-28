@@ -4,6 +4,7 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Data.Array as A
+import Data.Array ((..))
 import Data.Foldable (foldl, for_, all, and)
 import Data.FoldableWithIndex (foldrWithIndex)
 import Data.Function (on)
@@ -19,6 +20,7 @@ import Data.Tuple (Tuple(..), fst, uncurry)
 import Effect (Effect)
 import Effect.Console (log)
 import Partial.Unsafe (unsafePartial)
+import Test.Assert (assert')
 import Test.QuickCheck ((<?>), (===), quickCheck, quickCheck')
 import Test.QuickCheck.Arbitrary (class Arbitrary, arbitrary)
 import Test.QuickCheck.Gen (elements, oneOf)
@@ -166,6 +168,12 @@ mapTests = do
     let nubbedList = nubBy ((==) `on` fst) list
         f x = M.toUnfoldable (M.fromFoldable x)
     in sort (f nubbedList) == sort nubbedList <?> show nubbedList
+
+  log "checkValid (fromDistinctAscArray (1..n))"
+  for_ (0..100) \n ->
+    let m = (MI.fromDistinctAscArray (map (\i -> Tuple i unit) (1..n))) in
+    assert' ("checkValid fromDistinctAscArray " <> show n <> ":\n" <> MI.showIndentedTree m) $
+      MI.checkValid m
 
   log "checkValid . fromFoldable"
   quickCheck $ \(list :: List (Tuple SmallKey Unit)) ->
